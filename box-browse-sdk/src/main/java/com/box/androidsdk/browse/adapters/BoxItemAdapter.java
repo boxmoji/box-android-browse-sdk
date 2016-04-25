@@ -23,11 +23,13 @@ import com.box.androidsdk.content.models.BoxItem;
 import com.box.androidsdk.content.models.BoxSession;
 
 import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
+
 
 public class BoxItemAdapter extends RecyclerView.Adapter<BoxItemAdapter.BoxItemViewHolder> {
     protected final Context mContext;
@@ -198,7 +200,6 @@ public class BoxItemAdapter extends RecyclerView.Adapter<BoxItemAdapter.BoxItemV
 
     public class BoxItemViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener, View.OnLongClickListener {
         BoxItem mItem;
-
         View mView;
         ImageView mThumbView;
         TextView mNameView;
@@ -233,7 +234,7 @@ public class BoxItemAdapter extends RecyclerView.Adapter<BoxItemAdapter.BoxItemV
             mSecondaryClickListener.setListItem(mItem);
         }
 
-
+        private final String mDescriptionTemplate = "%s  • %s";
         /**
          * Called when a {@link BoxItem} is bound to a ViewHolder. Customizations of UI elements
          * should be done by overriding this method. If extending from a {@link BoxBrowseActivity}
@@ -249,6 +250,7 @@ public class BoxItemAdapter extends RecyclerView.Adapter<BoxItemAdapter.BoxItemV
             }
 
             final BoxItem prevItem = holder.getItem();
+
             boolean isSame = prevItem != null && prevItem.getId() != null &&
                     prevItem.getId().equals(itemToBind.getId()) &&
                     prevItem.getModifiedAt() != null &&
@@ -263,7 +265,7 @@ public class BoxItemAdapter extends RecyclerView.Adapter<BoxItemAdapter.BoxItemV
                 String size = itemToBind.getSize() != null ?
                         localFileSizeToDisplay(itemToBind.getSize()) :
                         "";
-                String description = String.format(Locale.ENGLISH, "%s  • %s", modifiedAt, size);
+                String description = String.format(Locale.ENGLISH, mDescriptionTemplate, modifiedAt, size);
                 holder.getMetaDescription().setText(description);
                 mController.getThumbnailManager().loadThumbnail(itemToBind, holder.getThumbView());
             }
@@ -273,6 +275,7 @@ public class BoxItemAdapter extends RecyclerView.Adapter<BoxItemAdapter.BoxItemV
 
             boolean isEnabled = mListener.getItemFilter() == null || mListener.getItemFilter().isEnabled(itemToBind);
             holder.getView().setEnabled(isEnabled);
+
             if (isEnabled) {
                 holder.getThumbView().setAlpha(1f);
                 holder.getNameView().setTextColor(mContext.getResources().getColor(R.color.box_browsesdk_primary_text));
@@ -305,8 +308,20 @@ public class BoxItemAdapter extends RecyclerView.Adapter<BoxItemAdapter.BoxItemV
                     getView().setAlpha(.5f);
                 }
             }
-
         }
+
+
+        final int constKB = 1024;
+        final int constMB = constKB * constKB;
+        final int constGB = constMB * constKB;
+        final long floatKB = 1024;
+        final long floatMB = floatKB * floatKB;
+        final long floatGB = floatMB * floatKB;
+        final String BYTES = "B";
+        final String DEFAULT_BYTES_TEXT = "0 bytes";
+        final String KB_TEMPLATE = "%4.1f KB";
+        final String MB_TEMPLATE = "%4.1f MB";
+        final String GB_TEMPLATE = "%4.1f GB";
 
         /**
          * Java version of routine to turn a long into a short user readable string.
@@ -316,29 +331,23 @@ public class BoxItemAdapter extends RecyclerView.Adapter<BoxItemAdapter.BoxItemV
          * @param numSize the number of bytes in the file.
          * @return String Short human readable String e.g. 2.5 MB
          */
-        private String localFileSizeToDisplay(final double numSize) {
-            final int constKB = 1024;
-            final int constMB = constKB * constKB;
-            final int constGB = constMB * constKB;
-            final double floatKB = 1024.0f;
-            final double floatMB = floatKB * floatKB;
-            final double floatGB = floatMB * floatKB;
-            final String BYTES = "B";
-            String textSize = "0 bytes";
-            String strSize = Double.toString(numSize);
+        private String localFileSizeToDisplay(final long numSize) {
+
+            String textSize = DEFAULT_BYTES_TEXT;
+            String strSize = Long.toString(numSize);
             double size;
 
             if (numSize < constKB) {
                 textSize = strSize + " " + BYTES;
             } else if ((numSize >= constKB) && (numSize < constMB)) {
                 size = numSize / floatKB;
-                textSize = String.format(Locale.ENGLISH, "%4.1f KB", size);
+                textSize = String.format(Locale.ENGLISH, KB_TEMPLATE, size);
             } else if ((numSize >= constMB) && (numSize < constGB)) {
                 size = numSize / floatMB;
-                textSize = String.format(Locale.ENGLISH, "%4.1f MB", size);
+                textSize = String.format(Locale.ENGLISH, MB_TEMPLATE, size);
             } else if (numSize >= constGB) {
                 size = numSize / floatGB;
-                textSize = String.format(Locale.ENGLISH, "%4.1f GB", size);
+                textSize = String.format(Locale.ENGLISH, GB_TEMPLATE, size);
             }
             return textSize;
         }

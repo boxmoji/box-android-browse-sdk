@@ -3,7 +3,6 @@ package com.box.androidsdk.browse.uidata;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.WeakHashMap;
@@ -16,9 +15,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Log;
+import android.os.AsyncTask;
+import android.support.v4.util.LruCache;
 import android.widget.ImageView;
 
 import com.box.androidsdk.browse.R;
@@ -52,6 +50,9 @@ public class ThumbnailManager {
     
     /** Executor that we will submit our set thumbnail tasks to. */
     private ThreadPoolExecutor thumbnailRequestExecutor;
+
+    protected LruCache<Integer, BitmapDrawable> mIconResourceCache = new LruCache<Integer, BitmapDrawable>(10);
+
 
     /** Maps the target image view to the thumbnail task. Provides ability to cancel tasks */
     WeakHashMap<Object, BoxFutureTask> mTargetToTask = new WeakHashMap<Object, BoxFutureTask>();
@@ -182,6 +183,18 @@ public class ThumbnailManager {
         }
     }
 
+    public BitmapDrawable getDefaultIconDrawble(final BoxItem boxItem, final Resources resources){
+        int resId = getDefaultIconResource(boxItem);
+        BitmapDrawable cachedDrawable = mIconResourceCache.get(resId);
+        if (cachedDrawable != null){
+            return cachedDrawable;
+        } else {
+            BitmapDrawable drawable = new BitmapDrawable(resources,BitmapFactory.decodeResource(resources, resId));
+            mIconResourceCache.put(resId, drawable);
+            return drawable;
+        }
+    }
+
     /**
      * Returns a file in a determinate location for the given boxItem.
      * 
@@ -220,7 +233,7 @@ public class ThumbnailManager {
         }
     }
 
-    public static boolean isThumbnailAvailable(BoxItem item) {
+    public static boolean isThumbnailPossible(BoxItem item) {
         if (item == null || SdkUtils.isBlank(item.getName())) {
             return false;
         }
@@ -239,8 +252,9 @@ public class ThumbnailManager {
      * @param targetImage
      */
     public void loadThumbnail(final BoxItem item, final ImageView targetImage) {
-        if (item instanceof BoxFile && isThumbnailAvailable(item)) {
+        if (item instanceof BoxFile && isThumbnailPossible(item)) {
             // Cancel pending task upon recycle.
+
             BoxFutureTask task = mTargetToTask.remove(targetImage);
             if (task != null) {
                 task.cancel(false);
@@ -248,18 +262,33 @@ public class ThumbnailManager {
 
             // Placeholder should not be displayed (ie. set to null) if the file has already been fetched
             File thumbnailFile = getThumbnailForFile(item.getId());
-            Bitmap placeHolderBitmap = thumbnailFile.length() == 0 ?
-                    BitmapFactory.decodeResource(targetImage.getResources(), getDefaultIconResource(item)) :
-                    null;
+            BitmapDrawable defaultDrawable = getDefaultIconDrawble(item, targetImage.getResources());
+            targetImage.setImageDrawable(defaultDrawable);
 
             // Set the drawable to our loader drawable, which will show a placeholder before loading the thumbnail into the view
             BoxRequestsFile.DownloadThumbnail request = mController.getThumbnailRequest(item.getId(), thumbnailFile);
-            LoaderDrawable loaderDrawable = LoaderDrawable.create(request, targetImage, placeHolderBitmap);
+            LoaderDrawable loaderDrawable = LoaderDrawable.create(request, targetImage, defaultDrawable.getBitmap());
             targetImage.setImageDrawable(loaderDrawable);
             mTargetToTask.put(targetImage, loaderDrawable.getTask());
-            getRequestExecutor().execute(loaderDrawable.getTask());
+
+            ThreadPoolExecutor executor = getRequestExecutor();
+
+            final BoxFutureTask taskDrawable = loaderDrawable.getTask();
+
+            if (thumbnailFile.length() == 0) {
+                executor.execute(taskDrawable);
+            } else {
+                AsyncTask asyncLoad = new AsyncTask() {
+                    @Override
+                    protected Object doInBackground(Object[] params) {
+                        taskDrawable.run();
+                        return null;
+                    }
+                };
+                asyncLoad.execute();
+            }
         } else {
-            targetImage.setImageResource(getDefaultIconResource(item));
+            targetImage.setImageDrawable(getDefaultIconDrawble(item, targetImage.getResources()));
         }
     }
 
@@ -269,7 +298,7 @@ public class ThumbnailManager {
      * @return executor
      */
     private ThreadPoolExecutor getRequestExecutor() {
-        if (thumbnailRequestExecutor == null || thumbnailRequestExecutor.isShutdown()) {
+        if (thumbnailRequestExecutor == null ) {
             thumbnailRequestExecutor = new ThreadPoolExecutor(4, 10, 3600, TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>());
         }
         return thumbnailRequestExecutor;
