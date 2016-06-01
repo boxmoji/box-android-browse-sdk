@@ -274,7 +274,10 @@ public class ThumbnailManager {
             Bitmap placeHolderBitmap = (thumbnailFile.length() == 0 || !thumbnailFile.exists()) ?
                     BitmapFactory.decodeResource(targetImage.getResources(), getDefaultIconResource(item)) :
                     null;
-
+            if (!thumbnailFile.exists()){
+                // getThumbnailForBoxFile must have either found a file or created one if it could not simply return.
+                return;
+            }
             // Set the drawable to our loader drawable, which will show a placeholder before loading the thumbnail into the view
             BoxRequestsFile.DownloadThumbnail request = mController.getThumbnailRequest(item.getId(), thumbnailFile);
             LoaderDrawable loaderDrawable = LoaderDrawable.create(request, targetImage, placeHolderBitmap);
